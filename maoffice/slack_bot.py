@@ -151,7 +151,7 @@ def build_app():
 
             elif cmd == "patient":
                 if not args:
-                    respond("Usage: `/od patient <last name>`")
+                    respond("Usage: `/od patient <name>` — e.g. `Tian`, `Ye Tian`, or `Tian, Ye`")
                     return
                 patients = opendental.find_patients(args)
                 respond(format_patient_response(patients, args))

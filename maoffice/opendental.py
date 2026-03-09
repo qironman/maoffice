@@ -237,12 +237,15 @@ def get_insurance_claims_summary() -> dict[str, Any]:
 
 
 def find_patients(search: str) -> list[dict[str, Any]]:
-    """Search patients by last name (case-insensitive, partial match).
+    """Search patients by name (case-insensitive, partial match).
+
+    Handles single token (searches LName and FName), or two tokens separated by
+    a space or comma (tries "First Last" and "Last First" orderings).
 
     Returns list of dicts with keys:
         PatNum, LName, FName, Birthdate, BalTotal, NextAptDate, PriCarrier
     """
-    sql = """
+    base_select = """
         SELECT
             p.PatNum,
             p.LName,
@@ -260,12 +263,36 @@ def find_patients(search: str) -> list[dict[str, Any]]:
         LEFT JOIN inssub isub ON isub.InsSubNum = pp.InsSubNum
         LEFT JOIN insplan ip ON ip.PlanNum = isub.PlanNum
         LEFT JOIN carrier ic ON ic.CarrierNum = ip.CarrierNum
-        WHERE p.LName LIKE %s
-          AND p.PatStatus = 0
-        ORDER BY p.LName, p.FName
-        LIMIT 10
+        WHERE p.PatStatus = 0
     """
+
+    # Normalise: strip commas so "Tian, Ye" and "Tian Ye" are treated the same
+    tokens = search.replace(",", " ").split()
+
+    if len(tokens) >= 2:
+        # Two tokens: try (LName=token[0], FName=token[1]) OR (LName=token[1], FName=token[0])
+        a, b = tokens[0], tokens[1]
+        sql = base_select + """
+          AND (
+            (p.LName LIKE %s AND p.FName LIKE %s)
+            OR
+            (p.LName LIKE %s AND p.FName LIKE %s)
+          )
+          ORDER BY p.LName, p.FName
+          LIMIT 10
+        """
+        params = (f"%{a}%", f"%{b}%", f"%{b}%", f"%{a}%")
+    else:
+        # Single token: match anywhere in LName or FName
+        token = tokens[0] if tokens else search
+        sql = base_select + """
+          AND (p.LName LIKE %s OR p.FName LIKE %s)
+          ORDER BY p.LName, p.FName
+          LIMIT 10
+        """
+        params = (f"%{token}%", f"%{token}%")
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (f"%{search}%",))
+            cur.execute(sql, params)
             return cur.fetchall()

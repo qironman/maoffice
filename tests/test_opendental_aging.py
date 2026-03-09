@@ -57,3 +57,29 @@ def test_find_patients_search_is_case_insensitive():
     with patch.object(opendental, "get_connection", return_value=conn):
         opendental.find_patients("DOE")
     # Should not raise
+
+
+def test_find_patients_two_token_search():
+    """find_patients() with 'First Last' passes both tokens as params."""
+    conn = _make_conn_fetchall([])
+    # cursor is conn.cursor() — the context manager returns the cursor itself
+    cursor = conn.cursor.return_value
+    with patch.object(opendental, "get_connection", return_value=conn):
+        opendental.find_patients("Ye Tian")
+    sql, params = cursor.execute.call_args[0]
+    # Two-token search uses 4 params (a,b,b,a ordering)
+    assert len(params) == 4
+    assert "%Ye%" in params
+    assert "%Tian%" in params
+
+
+def test_find_patients_comma_format():
+    """find_patients() strips commas so 'Tian, Ye' works like 'Tian Ye'."""
+    conn = _make_conn_fetchall([])
+    cursor = conn.cursor.return_value
+    with patch.object(opendental, "get_connection", return_value=conn):
+        opendental.find_patients("Tian, Ye")
+    sql, params = cursor.execute.call_args[0]
+    assert len(params) == 4
+    assert "%Tian%" in params
+    assert "%Ye%" in params
