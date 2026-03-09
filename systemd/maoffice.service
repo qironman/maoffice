@@ -1,0 +1,11 @@
+[Unit]
+Description=maoffice Slack notification service
+
+[Service]
+ExecStart=/home/ytian/pyenvs/maoffice/bin/python /home/ytian/git/maoffice/main.py
+WorkingDirectory=/home/ytian/git/maoffice
+EnvironmentFile=/home/ytian/git/maoffice/.env
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
