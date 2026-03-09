@@ -92,3 +92,40 @@ def get_today_cancellations() -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(sql, (today,))
             return cur.fetchall()
+
+
+def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
+    """Return open appointment slots for the next N days grouped by date + provider.
+
+    OpenDental tracks available blocks in the `schedule` table. An open slot
+    is a scheduled block with no appointment booked against it.
+    Returns list of dicts: {SchedDate, ProvAbbr, OpenSlots}
+    """
+    from datetime import date, timedelta
+    today = date.today()
+    end_date = today + timedelta(days=days_ahead)
+
+    sql = """
+        SELECT
+            DATE(s.SchedDate) AS SchedDate,
+            pr.Abbr AS ProvAbbr,
+            COUNT(*) AS OpenSlots
+        FROM schedule s
+        LEFT JOIN provider pr ON pr.ProvNum = s.ProvNum
+        WHERE s.SchedDate >= %s
+          AND s.SchedDate < %s
+          AND s.Status = 0
+          AND s.SchedType = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM appointment a
+              WHERE a.ProvNum = s.ProvNum
+                AND DATE(a.AptDateTime) = DATE(s.SchedDate)
+                AND a.AptStatus NOT IN (2, 5)
+          )
+        GROUP BY DATE(s.SchedDate), s.ProvNum
+        ORDER BY SchedDate, ProvAbbr
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (today.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            return cur.fetchall()
