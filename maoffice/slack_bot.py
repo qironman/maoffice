@@ -87,11 +87,10 @@ def format_aging_response(aging: dict) -> str:
     total = sum(float(v) for v in aging.values())
     return (
         f"*AR Aging Report:*\n"
-        f"• 0-30 days:   ${float(aging.get('bal_0_30', 0)):,.0f}\n"
-        f"• 31-60 days:  ${float(aging.get('bal_31_60', 0)):,.0f}\n"
-        f"• 61-90 days:  ${float(aging.get('bal_61_90', 0)):,.0f}\n"
-        f"• 91-120 days: ${float(aging.get('bal_91_120', 0)):,.0f}\n"
-        f"• 120+ days:   ${float(aging.get('bal_over_120', 0)):,.0f}\n"
+        f"• 0-30 days:  ${float(aging.get('bal_0_30', 0)):,.0f}\n"
+        f"• 31-60 days: ${float(aging.get('bal_31_60', 0)):,.0f}\n"
+        f"• 61-90 days: ${float(aging.get('bal_61_90', 0)):,.0f}\n"
+        f"• 90+ days:   ${float(aging.get('bal_over_90', 0)):,.0f}\n"
         f"• *Total outstanding: ${total:,.0f}*"
     )
 
@@ -110,10 +109,13 @@ def format_production_response(production: dict, collections: dict) -> str:
 
 def format_openslots_response(slots: list[dict]) -> str:
     if not slots:
-        return "No open slots found in the next 7 days — schedule is full! 🎉"
-    lines = ["*Open Slots — Next 7 Days:*"]
+        return "No working days found in the next 7 days."
+    lines = ["*Schedule — Next 7 Days:*"]
     for s in slots:
-        lines.append(f"• {s.get('SchedDate', '')}  [{s.get('ProvAbbr', '')}]  {s.get('OpenSlots', 0)} slot(s)")
+        lines.append(
+            f"• {s.get('SchedDate', '')}  [{s.get('ProvAbbr', '')}]  "
+            f"{s.get('WorkHours', 0)}h scheduled  •  {s.get('AptCount', 0)} appointments"
+        )
     return "\n".join(lines)
 
 

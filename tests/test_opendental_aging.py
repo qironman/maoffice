@@ -29,13 +29,13 @@ def _make_conn_fetchall(rows):
 
 
 def test_get_aging_report_returns_buckets():
-    """get_aging_report() returns dict with 30/60/90/120+ buckets."""
-    fake_row = {"bal_0_30": 500.0, "bal_31_60": 200.0, "bal_61_90": 100.0, "bal_91_120": 50.0, "bal_over_120": 25.0}
+    """get_aging_report() returns dict with 0-30/31-60/61-90/90+ buckets."""
+    fake_row = {"bal_0_30": 500.0, "bal_31_60": 200.0, "bal_61_90": 100.0, "bal_over_90": 75.0}
     conn = _make_conn_fetchone(fake_row)
     with patch.object(opendental, "get_connection", return_value=conn):
         result = opendental.get_aging_report()
     assert "bal_0_30" in result
-    assert "bal_over_120" in result
+    assert "bal_over_90" in result
 
 
 def test_find_patients_returns_list():

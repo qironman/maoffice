@@ -96,34 +96,35 @@ def get_today_cancellations() -> list[dict[str, Any]]:
 
 
 def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
-    """Return open appointment slots for the next N days grouped by date + provider.
+    """Return working days in the next N days with scheduled hours and appointment counts.
 
-    OpenDental tracks available blocks in the `schedule` table. An open slot
-    is a scheduled block with no appointment booked against it.
-    Returns list of dicts: {SchedDate, ProvAbbr, OpenSlots}
+    Uses SchedType=1 (provider working blocks) to find days the office is open,
+    then counts booked appointments per provider per day. Returns all working days
+    so staff can see which days have room.
+
+    Returns list of dicts: {SchedDate, ProvAbbr, WorkHours, AptCount}
     """
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
 
     sql = """
         SELECT
-            DATE(s.SchedDate) AS SchedDate,
+            s.SchedDate,
             pr.Abbr AS ProvAbbr,
-            COUNT(*) AS OpenSlots
+            ROUND(SUM(TIME_TO_SEC(TIMEDIFF(s.StopTime, s.StartTime))) / 3600, 1) AS WorkHours,
+            COALESCE((
+                SELECT COUNT(*) FROM appointment a
+                WHERE a.ProvNum = s.ProvNum
+                  AND DATE(a.AptDateTime) = s.SchedDate
+                  AND a.AptStatus NOT IN (2, 5)
+            ), 0) AS AptCount
         FROM schedule s
-        LEFT JOIN provider pr ON pr.ProvNum = s.ProvNum
+        JOIN provider pr ON pr.ProvNum = s.ProvNum
         WHERE s.SchedDate >= %s
           AND s.SchedDate < %s
-          AND s.Status = 0
-          AND s.SchedType = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM appointment a
-              WHERE a.ProvNum = s.ProvNum
-                AND DATE(a.AptDateTime) = DATE(s.SchedDate)
-                AND a.AptStatus NOT IN (2, 5)
-          )
-        GROUP BY DATE(s.SchedDate), s.ProvNum
-        ORDER BY SchedDate, ProvAbbr
+          AND s.SchedType = 1
+        GROUP BY s.SchedDate, s.ProvNum
+        ORDER BY s.SchedDate, pr.Abbr
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -186,16 +187,15 @@ def get_aging_report() -> dict[str, Any]:
     """Return AR aging buckets across all patients with outstanding balances.
 
     OpenDental stores pre-computed aging in the patient table.
-    Returns dict: {bal_0_30, bal_31_60, bal_61_90, bal_91_120, bal_over_120}
-    all as floats.
+    This instance uses 4 buckets: 0-30, 31-60, 61-90, 90+.
+    Returns dict: {bal_0_30, bal_31_60, bal_61_90, bal_over_90} all as floats.
     """
     sql = """
         SELECT
-            COALESCE(SUM(Bal_0_30), 0)   AS bal_0_30,
-            COALESCE(SUM(Bal_31_60), 0)  AS bal_31_60,
-            COALESCE(SUM(Bal_61_90), 0)  AS bal_61_90,
-            COALESCE(SUM(Bal_91_120), 0) AS bal_91_120,
-            COALESCE(SUM(BalOver120), 0) AS bal_over_120
+            COALESCE(SUM(Bal_0_30), 0)  AS bal_0_30,
+            COALESCE(SUM(Bal_31_60), 0) AS bal_31_60,
+            COALESCE(SUM(Bal_61_90), 0) AS bal_61_90,
+            COALESCE(SUM(BalOver90), 0) AS bal_over_90
         FROM patient
         WHERE BalTotal > 0
           AND PatStatus = 0
@@ -206,7 +206,7 @@ def get_aging_report() -> dict[str, Any]:
             row = cur.fetchone()
             return row or {
                 "bal_0_30": 0.0, "bal_31_60": 0.0, "bal_61_90": 0.0,
-                "bal_91_120": 0.0, "bal_over_120": 0.0,
+                "bal_over_90": 0.0,
             }
 
 

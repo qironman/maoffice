@@ -41,7 +41,8 @@ def test_format_patient_response_not_found():
 
 def test_format_aging_response():
     aging = {"bal_0_30": 500.0, "bal_31_60": 200.0, "bal_61_90": 100.0,
-             "bal_91_120": 50.0, "bal_over_120": 25.0}
+             "bal_over_90": 75.0}
     text = slack_bot.format_aging_response(aging)
     assert "0-30" in text
     assert "$500" in text
+    assert "90+" in text

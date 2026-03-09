@@ -162,9 +162,9 @@ def build_morning_message_v2(
     ) or "• No appointments scheduled today."
 
     slot_lines = "\n".join(
-        f"• {s['SchedDate']}  {s.get('ProvAbbr', '')}  — {s['OpenSlots']} open slot(s)"
+        f"• {s['SchedDate']}  {s.get('ProvAbbr', '')}  — {s.get('WorkHours', 0)}h  •  {s.get('AptCount', 0)} apts"
         for s in open_slots
-    ) or "• Schedule is full this week."
+    ) or "• No working days found this week."
 
     cancel_lines = "\n".join(
         f"• {c['PatientName']}  {c.get('ProcDescript', '')}"
@@ -224,8 +224,7 @@ def build_summary_message_v2(
         f"0-30: {_fmt_currency(aging.get('bal_0_30', 0))} | "
         f"31-60: {_fmt_currency(aging.get('bal_31_60', 0))} | "
         f"61-90: {_fmt_currency(aging.get('bal_61_90', 0))} | "
-        f"91-120: {_fmt_currency(aging.get('bal_91_120', 0))} | "
-        f"120+: {_fmt_currency(aging.get('bal_over_120', 0))}"
+        f"90+: {_fmt_currency(aging.get('bal_over_90', 0))}"
     )
 
     cancel_lines = "\n".join(
