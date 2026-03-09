@@ -99,8 +99,9 @@ def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
     """Return working days in the next N days with scheduled hours and appointment counts.
 
     Uses SchedType=1 (provider working blocks) to find days the office is open,
-    then counts booked appointments per provider per day. Returns all working days
-    so staff can see which days have room.
+    then counts booked appointments per provider per day. Hygiene appointments
+    are booked under the primary provider (ProvNum) but assigned to the hygienist
+    via ProvHyg — both fields are checked so hygienists show correct counts.
 
     Returns list of dicts: {SchedDate, ProvAbbr, WorkHours, AptCount}
     """
@@ -114,7 +115,7 @@ def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
             ROUND(SUM(TIME_TO_SEC(TIMEDIFF(s.StopTime, s.StartTime))) / 3600, 1) AS WorkHours,
             COALESCE((
                 SELECT COUNT(*) FROM appointment a
-                WHERE a.ProvNum = s.ProvNum
+                WHERE (a.ProvNum = s.ProvNum OR a.ProvHyg = s.ProvNum)
                   AND DATE(a.AptDateTime) = s.SchedDate
                   AND a.AptStatus NOT IN (2, 5)
             ), 0) AS AptCount
