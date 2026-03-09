@@ -2,44 +2,14 @@
 
 import logging
 import os
+from datetime import date
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from maoffice import ai_summary, messages, slack_client
+from maoffice import ai_summary, messages, opendental, slack_client
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Placeholder data (Phase 1) – replace with real OpenDental queries later
-# ---------------------------------------------------------------------------
-
-PLACEHOLDER_TODOS = [
-    "Review today's appointment schedule",
-    "Follow up on yesterday's outstanding claims",
-    "Check lab cases due this week",
-    "Morning huddle at 8:30 AM",
-    "Order supplies: gloves (size M), bibs",
-]
-
-PLACEHOLDER_STATS = {
-    "Patients seen": "12",
-    "New patients": "2",
-    "Production": "$4,200",
-    "Collections": "$3,800",
-    "Cancelled / No-show": "1",
-}
-
-PLACEHOLDER_RAW_DATA = (
-    "Today the practice saw 12 patients including 2 new patients. "
-    "Total production was $4,200 and collections were $3,800. "
-    "One patient cancelled their cleaning appointment at the last minute. "
-    "Dr. Smith completed 3 crowns and 5 fillings. "
-    "Two patients were referred to the endodontist for root canals. "
-    "Lab cases for Smith and Johnson are due Thursday. "
-    "Outstanding insurance claims: 4 claims totaling $1,600 sent last week."
-)
 
 
 # ---------------------------------------------------------------------------
@@ -48,28 +18,76 @@ PLACEHOLDER_RAW_DATA = (
 
 
 def send_morning_message() -> None:
-    """Build and send the morning todo list to Slack."""
+    """Fetch live OpenDental data and send morning schedule to Slack."""
     channel = os.environ["SLACK_CHANNEL_ID"]
     try:
-        plain_text, blocks = messages.build_morning_message(PLACEHOLDER_TODOS)
+        schedule = opendental.get_today_schedule()
+        cancellations = opendental.get_today_cancellations()
+        open_slots = opendental.get_open_slots()
+    except Exception:
+        logger.exception("Failed to query OpenDental — sending warning to Slack")
+        slack_client.send_message(
+            channel,
+            "⚠️ maoffice: Could not reach OpenDental DB for morning report. Please check the connection.",
+        )
+        return
+
+    try:
+        plain_text, blocks = messages.build_morning_message_v2(schedule, cancellations, open_slots)
         slack_client.send_message(channel, plain_text, blocks)
-        logger.info("Morning message sent to %s", channel)
+        logger.info("Morning message sent to %s (%d appointments)", channel, len(schedule))
     except Exception:
         logger.exception("Failed to send morning message")
 
 
 def send_daily_summary() -> None:
-    """Build AI summary and send end-of-day message to Slack."""
+    """Fetch live OpenDental data, generate AI summary, send to Slack."""
     channel = os.environ["SLACK_CHANNEL_ID"]
+
+    # Query OpenDental
     try:
-        logger.info("Requesting AI summary…")
-        summary_text = ai_summary.summarize(PLACEHOLDER_RAW_DATA)
+        production = opendental.get_daily_production()
+        collections = opendental.get_collections()
+        claims = opendental.get_insurance_claims_summary()
+        cancellations = opendental.get_today_cancellations()
+
+        # AR aging: only on Mondays (or always — configurable via env)
+        if date.today().weekday() == 0 or os.environ.get("AGING_DAILY", "").lower() == "true":
+            aging = opendental.get_aging_report()
+        else:
+            aging = {"bal_0_30": 0.0, "bal_31_60": 0.0, "bal_61_90": 0.0,
+                     "bal_91_120": 0.0, "bal_over_120": 0.0}
+
     except Exception:
-        logger.exception("AI summary failed; using fallback text")
-        summary_text = PLACEHOLDER_RAW_DATA  # fallback: send raw data
+        logger.exception("Failed to query OpenDental — sending warning to Slack")
+        slack_client.send_message(
+            channel,
+            "⚠️ maoffice: Could not reach OpenDental DB for daily summary. Please check the connection.",
+        )
+        return
+
+    # Build raw text for AI summarization
+    raw_text = (
+        f"Date: {date.today().isoformat()}. "
+        f"Procedures completed: {production['procedure_count']}, "
+        f"Production: ${production['production']:,.0f}, "
+        f"Patient payments: ${collections['patient_payments']:,.0f}, "
+        f"Insurance payments: ${collections['insurance_payments']:,.0f}. "
+        f"Cancellations/no-shows: {len(cancellations)}. "
+        f"Pending insurance claims: {claims['pending_count']} totaling ${claims['pending_total']:,.0f}. "
+        f"AR over 90 days: ${float(aging.get('bal_91_120', 0)) + float(aging.get('bal_over_120', 0)):,.0f}."
+    )
 
     try:
-        plain_text, blocks = messages.build_summary_message(summary_text, PLACEHOLDER_STATS)
+        ai_text = ai_summary.summarize(raw_text)
+    except Exception:
+        logger.exception("AI summary failed; using raw text")
+        ai_text = raw_text
+
+    try:
+        plain_text, blocks = messages.build_summary_message_v2(
+            ai_text, production, collections, aging, claims, cancellations
+        )
         slack_client.send_message(channel, plain_text, blocks)
         logger.info("Daily summary sent to %s", channel)
     except Exception:
@@ -106,7 +124,7 @@ def create_scheduler() -> BlockingScheduler:
         send_morning_message,
         trigger=CronTrigger(hour=morning_h, minute=morning_m, timezone=timezone),
         id="morning_todo",
-        name="Morning todo list",
+        name="Morning schedule",
         replace_existing=True,
     )
 
@@ -119,7 +137,7 @@ def create_scheduler() -> BlockingScheduler:
     )
 
     logger.info(
-        "Scheduled morning todo at %02d:%02d and daily summary at %02d:%02d (%s)",
+        "Scheduled morning at %02d:%02d and summary at %02d:%02d (%s)",
         morning_h, morning_m, summary_h, summary_m, timezone,
     )
 
