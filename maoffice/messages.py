@@ -130,3 +130,139 @@ def build_summary_message(summary_text: str, stats: dict) -> tuple[str, list[dic
     )
 
     return plain_text, blocks
+
+
+def _fmt_currency(amount) -> str:
+    """Format a float as currency string, e.g. 4200.0 → '$4,200'."""
+    return f"${float(amount):,.0f}"
+
+
+def build_morning_message_v2(
+    schedule: list[dict],
+    cancellations: list[dict],
+    open_slots: list[dict],
+) -> tuple[str, list[dict]]:
+    """Build the Phase 2 morning message with live OpenDental data.
+
+    Args:
+        schedule: List of today's appointments from opendental.get_today_schedule().
+        cancellations: Today's broken/unscheduled from opendental.get_today_cancellations().
+        open_slots: Next-7-days open slots from opendental.get_open_slots().
+
+    Returns:
+        Tuple of (plain_text_fallback, blocks).
+    """
+    from datetime import date
+    today = date.today().strftime("%A, %B %-d, %Y")
+    mention = _dr_ma_mention()
+
+    # Build plain text
+    apt_lines = "\n".join(
+        f"• {a['AptDateTime'][11:16]}  {a['PatientName']}  [{a.get('ProvAbbr', '')}]  {a.get('ProcDescript', '')}"
+        for a in schedule
+    ) or "• No appointments scheduled today."
+
+    slot_lines = "\n".join(
+        f"• {s['SchedDate']}  {s.get('ProvAbbr', '')}  — {s['OpenSlots']} open slot(s)"
+        for s in open_slots
+    ) or "• Schedule is full this week."
+
+    cancel_lines = "\n".join(
+        f"• {c['PatientName']}  {c.get('ProcDescript', '')}"
+        for c in cancellations
+    ) or "• None"
+
+    plain_text = (
+        f"{mention} 🌅 Good morning! Here's your schedule for {today}:\n"
+        f"{apt_lines}\n\n"
+        f"Cancellations today:\n{cancel_lines}\n\n"
+        f"Open slots next 7 days:\n{slot_lines}"
+    )
+
+    # Build blocks
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"{mention} 🌅 *Good morning!*"}},
+        {"type": "header", "text": {"type": "plain_text", "text": f"Schedule — {today}", "emoji": True}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Today's Appointments ({len(schedule)})*\n{apt_lines}"}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Cancellations / No-shows*\n{cancel_lines}"}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Open Slots — Next 7 Days*\n{slot_lines}"}},
+        {"type": "divider"},
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": "Have a great day! 😊"}]},
+    ]
+
+    return plain_text, blocks
+
+
+def build_summary_message_v2(
+    ai_summary: str,
+    production: dict,
+    collections: dict,
+    aging: dict,
+    claims: dict,
+    cancellations: list[dict],
+) -> tuple[str, list[dict]]:
+    """Build the Phase 2 evening summary with live OpenDental data.
+
+    Returns:
+        Tuple of (plain_text_fallback, blocks).
+    """
+    from datetime import date
+    today = date.today().strftime("%A, %B %-d, %Y")
+    mention = _dr_ma_mention()
+
+    prod = _fmt_currency(production.get("production", 0))
+    proc_count = production.get("procedure_count", 0)
+    pat_pay = _fmt_currency(collections.get("patient_payments", 0))
+    ins_pay = _fmt_currency(collections.get("insurance_payments", 0))
+    total_collect = _fmt_currency(
+        float(collections.get("patient_payments", 0)) + float(collections.get("insurance_payments", 0))
+    )
+
+    aging_text = (
+        f"*AR Aging:* "
+        f"0-30: {_fmt_currency(aging.get('bal_0_30', 0))} | "
+        f"31-60: {_fmt_currency(aging.get('bal_31_60', 0))} | "
+        f"61-90: {_fmt_currency(aging.get('bal_61_90', 0))} | "
+        f"91-120: {_fmt_currency(aging.get('bal_91_120', 0))} | "
+        f"120+: {_fmt_currency(aging.get('bal_over_120', 0))}"
+    )
+
+    cancel_lines = "\n".join(
+        f"• {c['PatientName']}  {c.get('ProcDescript', '')}" for c in cancellations
+    ) or "• None"
+
+    plain_text = (
+        f"{mention} 📋 Daily Summary — {today}\n"
+        f"Production: {prod} ({proc_count} procedures)\n"
+        f"Collections: {total_collect} (patient: {pat_pay} | insurance: {ins_pay})\n"
+        f"Pending claims: {claims.get('pending_count', 0)} ({_fmt_currency(claims.get('pending_total', 0))})\n\n"
+        f"{ai_summary}"
+    )
+
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"{mention} 📋 *Daily Summary*"}},
+        {"type": "header", "text": {"type": "plain_text", "text": f"Daily Summary — {today}", "emoji": True}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": (
+            f"*Production:* {prod}  ({proc_count} procedures)\n"
+            f"*Collections:* {total_collect}  (patient: {pat_pay} | insurance: {ins_pay})"
+        )}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": aging_text}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": (
+            f"*Claims:* {claims.get('pending_count', 0)} pending ({_fmt_currency(claims.get('pending_total', 0))}) | "
+            f"{claims.get('rejected_count', 0)} rejected ({_fmt_currency(claims.get('rejected_total', 0))})"
+        )}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Cancellations / No-shows:*\n{cancel_lines}"}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*AI Summary:*\n{ai_summary}"}},
+        {"type": "divider"},
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": "Generated by maoffice 🤖"}]},
+    ]
+
+    return plain_text, blocks
