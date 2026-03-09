@@ -256,7 +256,9 @@ def find_patients(search: str) -> list[dict[str, Any]]:
                AND a.AptStatus = 0) AS NextAptDate,
             ic.CarrierName AS PriCarrier
         FROM patient p
-        LEFT JOIN insplan ip ON ip.PlanNum = p.PriPlanNum
+        LEFT JOIN patplan pp ON pp.PatNum = p.PatNum AND pp.Ordinal = 1
+        LEFT JOIN inssub isub ON isub.InsSubNum = pp.InsSubNum
+        LEFT JOIN insplan ip ON ip.PlanNum = isub.PlanNum
         LEFT JOIN carrier ic ON ic.CarrierNum = ip.CarrierNum
         WHERE p.LName LIKE %s
           AND p.PatStatus = 0
