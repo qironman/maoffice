@@ -28,9 +28,19 @@ def test_get_daily_production_returns_dict():
 
 def test_get_collections_returns_dict():
     """get_collections() returns dict with patient_payments and insurance_payments."""
-    fake_row = {"patient_payments": 1200.0, "insurance_payments": 2600.0}
-    conn, _ = _make_conn(fake_row)
+    cursor = MagicMock()
+    cursor.__enter__ = lambda s: s
+    cursor.__exit__ = MagicMock(return_value=False)
+    # Two separate fetchone() calls: first for patient payments, then insurance
+    cursor.fetchone.side_effect = [
+        {"patient_payments": 1200.0},
+        {"insurance_payments": 2600.0},
+    ]
+    conn = MagicMock()
+    conn.__enter__ = lambda s: s
+    conn.__exit__ = MagicMock(return_value=False)
+    conn.cursor.return_value = cursor
     with patch.object(opendental, "get_connection", return_value=conn):
         result = opendental.get_collections()
-    assert "patient_payments" in result
-    assert "insurance_payments" in result
+    assert result["patient_payments"] == 1200.0
+    assert result["insurance_payments"] == 2600.0

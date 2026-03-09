@@ -152,7 +152,6 @@ def build_morning_message_v2(
     Returns:
         Tuple of (plain_text_fallback, blocks).
     """
-    from datetime import date
     today = date.today().strftime("%A, %B %-d, %Y")
     mention = _dr_ma_mention()
 
@@ -209,7 +208,6 @@ def build_summary_message_v2(
     Returns:
         Tuple of (plain_text_fallback, blocks).
     """
-    from datetime import date
     today = date.today().strftime("%A, %B %-d, %Y")
     mention = _dr_ma_mention()
 

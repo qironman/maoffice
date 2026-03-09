@@ -5,6 +5,7 @@ No persistent pool — queries are low-frequency (a few times per day).
 """
 
 import os
+from datetime import date, timedelta
 from typing import Any
 
 import pymysql
@@ -50,7 +51,7 @@ def get_today_schedule() -> list[dict[str, Any]]:
     Returns list of dicts with keys:
         AptNum, AptDateTime, PatientName, ProvAbbr, AptStatus, ProcDescript
     """
-    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    today = date.today().strftime("%Y-%m-%d")
     sql = """
         SELECT
             a.AptNum,
@@ -74,7 +75,7 @@ def get_today_schedule() -> list[dict[str, Any]]:
 
 def get_today_cancellations() -> list[dict[str, Any]]:
     """Return today's broken/unscheduled appointments."""
-    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    today = date.today().strftime("%Y-%m-%d")
     sql = """
         SELECT
             a.AptNum,
@@ -101,7 +102,6 @@ def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
     is a scheduled block with no appointment booked against it.
     Returns list of dicts: {SchedDate, ProvAbbr, OpenSlots}
     """
-    from datetime import date, timedelta
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
 
@@ -136,7 +136,7 @@ def get_daily_production() -> dict[str, Any]:
 
     Returns dict: {production: float, procedure_count: int}
     """
-    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    today = date.today().strftime("%Y-%m-%d")
     sql = """
         SELECT
             COALESCE(SUM(pl.ProcFee), 0) AS production,
@@ -157,9 +157,9 @@ def get_collections() -> dict[str, Any]:
 
     Returns dict: {patient_payments: float, insurance_payments: float}
     """
-    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    today = date.today().strftime("%Y-%m-%d")
 
-    patient_sql = """
+    patient_sql ="""
         SELECT COALESCE(SUM(PayAmt), 0) AS patient_payments
         FROM payment
         WHERE DATE(PayDate) = %s

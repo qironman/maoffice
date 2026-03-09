@@ -134,6 +134,9 @@ def build_app():
     @app.command("/od")
     def handle_od(ack, respond, command):
         ack()  # Must acknowledge within 3 seconds
+        if allowed_channel and command.get("channel_id") != allowed_channel:
+            respond("⚠️ This command is only available in the designated channel.")
+            return
         text = command.get("text", "")
         cmd, args = parse_od_command(text)
 
