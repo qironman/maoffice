@@ -19,3 +19,10 @@
 - `scheduler.py` holds placeholder data (Phase 1) and the two job functions (`send_morning_message`, `send_daily_summary`)
 - `scripts/send_*.py` are manual one-shot triggers that load `.env` explicitly by repo-root path
 - Local AI server at `http://localhost:4141/v1` (OpenAI-compatible); model set via `AI_MODEL` env var
+
+## OpenDental Database
+
+- **NEVER issue UPDATE or DELETE against the OpenDental database** — read-only access only
+- OpenDental MySQL at `OD_MYSQL_HOST` (Windows Server, port 3306); credentials in `.env`
+- Insurance join chain: `patient → patplan (Ordinal=1) → inssub → insplan → carrier` — `patient` table has NO `PriPlanNum` column
+- All queries use PyMySQL DictCursor; connections opened per-query, closed immediately (no pool)
