@@ -25,4 +25,6 @@
 - **NEVER issue UPDATE or DELETE against the OpenDental database** — read-only access only
 - OpenDental MySQL at `OD_MYSQL_HOST` (Windows Server, port 3306); credentials in `.env`
 - Insurance join chain: `patient → patplan (Ordinal=1) → inssub → insplan → carrier` — `patient` table has NO `PriPlanNum` column
+- Aging buckets: `Bal_0_30`, `Bal_31_60`, `Bal_61_90`, `BalOver90` (4 buckets — no `Bal_91_120` or `BalOver120`)
+- Provider working schedule: `schedule` table `SchedType=1` (working blocks); `SchedType=0` = office-closed markers (ancient, ignore); `SchedType=2` = blockouts
 - All queries use PyMySQL DictCursor; connections opened per-query, closed immediately (no pool)
