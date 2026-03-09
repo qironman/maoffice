@@ -1,6 +1,13 @@
 """Message formatters for morning todo and daily summary."""
 
+import os
 from datetime import date
+
+
+def _dr_ma_mention() -> str:
+    """Return a Slack @mention for Dr Ma, or fallback to plain text."""
+    user_id = os.environ.get("DR_MA_USER_ID")
+    return f"<@{user_id}>" if user_id else "@Dr Ma"
 
 
 def build_morning_message(todos: list[str]) -> tuple[str, list[dict]]:
@@ -13,17 +20,22 @@ def build_morning_message(todos: list[str]) -> tuple[str, list[dict]]:
         Tuple of (plain_text_fallback, blocks).
     """
     today = date.today().strftime("%A, %B %-d, %Y")
+    mention = _dr_ma_mention()
     todo_lines = "\n".join(f"• {item}" for item in todos) if todos else "• Nothing scheduled today"
 
     # Plain-text fallback for notifications
-    plain_text = f"🌅 Good morning! Here's today's todo list ({today}):\n{todo_lines}"
+    plain_text = f"{mention} 🌅 Good morning! Here's today's todo list ({today}):\n{todo_lines}"
 
     blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"{mention} 🌅 *Good morning! Here's today's todo list:*"},
+        },
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"🌅 Morning Todo List – {today}",
+                "text": f"Morning Todo List – {today}",
                 "emoji": True,
             },
         },
@@ -70,14 +82,19 @@ def build_summary_message(summary_text: str, stats: dict) -> tuple[str, list[dic
         Tuple of (plain_text_fallback, blocks).
     """
     today = date.today().strftime("%A, %B %-d, %Y")
-    plain_text = f"📋 Daily Summary – {today}\n\n{summary_text}"
+    mention = _dr_ma_mention()
+    plain_text = f"{mention} 📋 Daily Summary – {today}\n\n{summary_text}"
 
     blocks = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"{mention} 📋 *Daily Summary:*"},
+        },
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"📋 Daily Summary – {today}",
+                "text": f"Daily Summary – {today}",
                 "emoji": True,
             },
         },
