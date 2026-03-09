@@ -35,3 +35,60 @@ def get_connection() -> pymysql.connections.Connection:
         connect_timeout=5,
         cursorclass=pymysql.cursors.DictCursor,
     )
+
+
+# ---------------------------------------------------------------------------
+# AptStatus codes in OpenDental:
+#   0 = Scheduled, 1 = Complete, 2 = UnschedList, 3 = ASAP, 5 = Broken
+# ---------------------------------------------------------------------------
+APT_STATUS = {0: "Scheduled", 1: "Complete", 2: "Unscheduled", 3: "ASAP", 5: "Broken"}
+
+
+def get_today_schedule() -> list[dict[str, Any]]:
+    """Return today's appointments ordered by time.
+
+    Returns list of dicts with keys:
+        AptNum, AptDateTime, PatientName, ProvAbbr, AptStatus, ProcDescript
+    """
+    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    sql = """
+        SELECT
+            a.AptNum,
+            a.AptDateTime,
+            CONCAT(p.LName, ', ', p.FName) AS PatientName,
+            pr.Abbr AS ProvAbbr,
+            a.AptStatus,
+            a.ProcDescript
+        FROM appointment a
+        JOIN patient p ON p.PatNum = a.PatNum
+        LEFT JOIN provider pr ON pr.ProvNum = a.ProvNum
+        WHERE DATE(a.AptDateTime) = %s
+          AND a.AptStatus NOT IN (2, 5)
+        ORDER BY a.AptDateTime
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (today,))
+            return cur.fetchall()
+
+
+def get_today_cancellations() -> list[dict[str, Any]]:
+    """Return today's broken/unscheduled appointments."""
+    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    sql = """
+        SELECT
+            a.AptNum,
+            a.AptDateTime,
+            CONCAT(p.LName, ', ', p.FName) AS PatientName,
+            a.AptStatus,
+            a.ProcDescript
+        FROM appointment a
+        JOIN patient p ON p.PatNum = a.PatNum
+        WHERE DATE(a.AptDateTime) = %s
+          AND a.AptStatus IN (2, 5)
+        ORDER BY a.AptDateTime
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (today,))
+            return cur.fetchall()
