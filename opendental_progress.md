@@ -88,6 +88,7 @@ These differ from generic OpenDental documentation:
 | Aging buckets | `Bal_0_30`, `Bal_31_60`, `Bal_61_90`, `Bal_91_120`, `BalOver120` (5) | `Bal_0_30`, `Bal_31_60`, `Bal_61_90`, `BalOver90` (4) |
 | Patient insurance link | `patient.PriPlanNum` | No such column — use `patplan (Ordinal=1) → inssub → insplan → carrier` |
 | Open schedule slots | `schedule` rows with `SchedType=0` | `SchedType=0` = office-closed only; working blocks = `SchedType=1` |
+| Hygiene appointment provider | appointments linked to hygienist via `ProvNum` | `ProvNum` = primary provider (Dr. Ma); hygienist is in `ProvHyg` — check both when counting per provider |
 
 ---
 
@@ -189,6 +190,9 @@ Scheduler started
 ### Git Commits (Phase 2 + Live Fixes)
 
 ```
+3d4f292 docs: note ProvHyg pattern in CLAUDE.md
+e1fccdc fix: count hygiene appointments for Kate via ProvHyg field
+411ca6b docs: update opendental_progress.md with live fixes and schema discoveries
 13372d0 docs: add OD schema facts to CLAUDE.md (aging buckets, schedule types)
 41d0a6f fix: correct aging buckets and open slots query for this OD instance
 9f63ea4 feat: support first+last name search in find_patients
