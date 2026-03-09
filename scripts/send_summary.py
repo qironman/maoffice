@@ -1,49 +1,64 @@
 #!/usr/bin/env python3
-"""Manual script: send the daily summary to Slack right now.
+"""Manual one-shot: send daily summary now."""
 
-Usage:
-    ~/venvs/maoffice/bin/python scripts/send_summary.py
-"""
-
-import sys
 import os
+import sys
+from datetime import date
 from pathlib import Path
 
-# Repo root is one level up from scripts/
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
+repo_root = Path(__file__).parent.parent
+sys.path.insert(0, str(repo_root))
 
 from dotenv import load_dotenv
+load_dotenv(repo_root / ".env")
 
-# Load .env from the repo root explicitly (works regardless of CWD)
-env_file = REPO_ROOT / ".env"
-if not env_file.exists():
-    print(f"ERROR: {env_file} not found.")
-    print(f"  Copy .env.example → .env and fill in SLACK_BOT_TOKEN and SLACK_CHANNEL_ID.")
-    sys.exit(1)
+from maoffice import ai_summary, opendental, messages, slack_client
 
-load_dotenv(env_file)
 
-# Validate required vars before doing anything
-for var in ("SLACK_BOT_TOKEN", "SLACK_CHANNEL_ID"):
-    if not os.environ.get(var):
-        print(f"ERROR: {var} is not set in {env_file}")
+def main():
+    channel = os.environ.get("SLACK_CHANNEL_ID")
+    if not channel:
+        print("ERROR: SLACK_CHANNEL_ID not set", file=sys.stderr)
         sys.exit(1)
 
-from maoffice import messages, slack_client, ai_summary
+    od_host = os.environ.get("OD_MYSQL_HOST")
+    if not od_host:
+        print("ERROR: OD_MYSQL_HOST not set", file=sys.stderr)
+        sys.exit(1)
 
-if __name__ == "__main__":
-    from maoffice.scheduler import PLACEHOLDER_STATS, PLACEHOLDER_RAW_DATA
+    print(f"Querying OpenDental at {od_host}…")
+    production = opendental.get_daily_production()
+    collections = opendental.get_collections()
+    aging = opendental.get_aging_report()
+    claims = opendental.get_insurance_claims_summary()
+    cancellations = opendental.get_today_cancellations()
+
+    print(f"  Production: ${production['production']:,.0f}, Procedures: {production['procedure_count']}")
+
+    raw_text = (
+        f"Date: {date.today().isoformat()}. "
+        f"Procedures: {production['procedure_count']}, "
+        f"Production: ${production['production']:,.0f}, "
+        f"Collections: ${float(collections['patient_payments']) + float(collections['insurance_payments']):,.0f}. "
+        f"Cancellations: {len(cancellations)}. "
+        f"Pending claims: {claims['pending_count']}."
+    )
+
     print("Requesting AI summary…")
     try:
-        summary_text = ai_summary.summarize(PLACEHOLDER_RAW_DATA)
-        print("AI summary received.")
+        summary_text = ai_summary.summarize(raw_text)
     except Exception as e:
-        print(f"WARNING: AI server unavailable ({e}); sending raw data as fallback.")
-        summary_text = PLACEHOLDER_RAW_DATA
+        print(f"AI summary failed ({e}), using raw text")
+        summary_text = raw_text
 
-    print("Sending daily summary to Slack…")
-    channel = os.environ["SLACK_CHANNEL_ID"]
-    plain_text, blocks = messages.build_summary_message(summary_text, PLACEHOLDER_STATS)
+    plain_text, blocks = messages.build_summary_message_v2(
+        summary_text, production, collections, aging, claims, cancellations
+    )
+
+    print(f"Sending to channel {channel}…")
     slack_client.send_message(channel, plain_text, blocks)
-    print("Done. Check your Slack channel.")
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
