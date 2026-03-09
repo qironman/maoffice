@@ -180,3 +180,90 @@ def get_collections() -> dict[str, Any]:
         "patient_payments": float(pat.get("patient_payments", 0)),
         "insurance_payments": float(ins.get("insurance_payments", 0)),
     }
+
+
+def get_aging_report() -> dict[str, Any]:
+    """Return AR aging buckets across all patients with outstanding balances.
+
+    OpenDental stores pre-computed aging in the patient table.
+    Returns dict: {bal_0_30, bal_31_60, bal_61_90, bal_91_120, bal_over_120}
+    all as floats.
+    """
+    sql = """
+        SELECT
+            COALESCE(SUM(Bal_0_30), 0)   AS bal_0_30,
+            COALESCE(SUM(Bal_31_60), 0)  AS bal_31_60,
+            COALESCE(SUM(Bal_61_90), 0)  AS bal_61_90,
+            COALESCE(SUM(Bal_91_120), 0) AS bal_91_120,
+            COALESCE(SUM(BalOver120), 0) AS bal_over_120
+        FROM patient
+        WHERE BalTotal > 0
+          AND PatStatus = 0
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+            return row or {
+                "bal_0_30": 0.0, "bal_31_60": 0.0, "bal_61_90": 0.0,
+                "bal_91_120": 0.0, "bal_over_120": 0.0,
+            }
+
+
+def get_insurance_claims_summary() -> dict[str, Any]:
+    """Return count and total of pending and rejected insurance claims.
+
+    Returns dict: {pending_count, pending_total, rejected_count, rejected_total}
+    ClaimStatus: 0=Unsent, 1=Sent, 4=Received, 5=Preauth, 6=Supplemental
+    claimproc Status: 0=NotReceived, 1=Received, 2=Preauth, 3=Adjustment
+    """
+    sql = """
+        SELECT
+            SUM(CASE WHEN c.ClaimStatus = 1 THEN 1 ELSE 0 END)             AS pending_count,
+            COALESCE(SUM(CASE WHEN c.ClaimStatus = 1 THEN c.ClaimFee END), 0) AS pending_total,
+            SUM(CASE WHEN c.ClaimStatus = 7 THEN 1 ELSE 0 END)             AS rejected_count,
+            COALESCE(SUM(CASE WHEN c.ClaimStatus = 7 THEN c.ClaimFee END), 0) AS rejected_total
+        FROM claim c
+        WHERE c.DateService >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+            return row or {
+                "pending_count": 0, "pending_total": 0.0,
+                "rejected_count": 0, "rejected_total": 0.0,
+            }
+
+
+def find_patients(search: str) -> list[dict[str, Any]]:
+    """Search patients by last name (case-insensitive, partial match).
+
+    Returns list of dicts with keys:
+        PatNum, LName, FName, Birthdate, BalTotal, NextAptDate, PriCarrier
+    """
+    sql = """
+        SELECT
+            p.PatNum,
+            p.LName,
+            p.FName,
+            p.Birthdate,
+            p.BalTotal,
+            (SELECT MIN(a.AptDateTime)
+             FROM appointment a
+             WHERE a.PatNum = p.PatNum
+               AND a.AptDateTime >= NOW()
+               AND a.AptStatus = 0) AS NextAptDate,
+            ic.CarrierName AS PriCarrier
+        FROM patient p
+        LEFT JOIN insplan ip ON ip.PlanNum = p.PriPlanNum
+        LEFT JOIN carrier ic ON ic.CarrierNum = ip.CarrierNum
+        WHERE p.LName LIKE %s
+          AND p.PatStatus = 0
+        ORDER BY p.LName, p.FName
+        LIMIT 10
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (f"%{search}%",))
+            return cur.fetchall()
