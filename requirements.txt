@@ -1,5 +1,7 @@
 slack-sdk>=3.27
+slack-bolt>=1.18
 apscheduler>=3.10
 python-dotenv>=1.0
 requests>=2.31
 openai>=1.0
+PyMySQL>=1.1
