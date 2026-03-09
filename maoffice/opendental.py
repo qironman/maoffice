@@ -129,3 +129,54 @@ def get_open_slots(days_ahead: int = 7) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(sql, (today.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
             return cur.fetchall()
+
+
+def get_daily_production() -> dict[str, Any]:
+    """Return today's production: total fee and procedure count.
+
+    Returns dict: {production: float, procedure_count: int}
+    """
+    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+    sql = """
+        SELECT
+            COALESCE(SUM(pl.ProcFee), 0) AS production,
+            COUNT(*) AS procedure_count
+        FROM procedurelog pl
+        WHERE DATE(pl.ProcDate) = %s
+          AND pl.ProcStatus = 2
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (today,))
+            row = cur.fetchone()
+            return row or {"production": 0.0, "procedure_count": 0}
+
+
+def get_collections() -> dict[str, Any]:
+    """Return today's collections split by patient and insurance.
+
+    Returns dict: {patient_payments: float, insurance_payments: float}
+    """
+    today = __import__("datetime").date.today().strftime("%Y-%m-%d")
+
+    patient_sql = """
+        SELECT COALESCE(SUM(PayAmt), 0) AS patient_payments
+        FROM payment
+        WHERE DATE(PayDate) = %s
+    """
+    insurance_sql = """
+        SELECT COALESCE(SUM(InsPayAmt), 0) AS insurance_payments
+        FROM claimproc
+        WHERE DATE(DateCP) = %s
+          AND Status = 1
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(patient_sql, (today,))
+            pat = cur.fetchone() or {}
+            cur.execute(insurance_sql, (today,))
+            ins = cur.fetchone() or {}
+    return {
+        "patient_payments": float(pat.get("patient_payments", 0)),
+        "insurance_payments": float(ins.get("insurance_payments", 0)),
+    }
